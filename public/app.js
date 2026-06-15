@@ -413,8 +413,13 @@
   }
 
   function hasDirectN8nWebhook() {
-    return Boolean(runtimeConfig.n8nWebhookUrl && runtimeConfig.n8nWebhookUrl.trim());
-  }
+  return Boolean(
+    runtimeConfig.n8nStartWebhookUrl &&
+      runtimeConfig.n8nStartWebhookUrl.trim() &&
+      runtimeConfig.n8nStatusWebhookUrl &&
+      runtimeConfig.n8nStatusWebhookUrl.trim()
+  );
+}
 
   function canUseBackendApi() {
     return !state.isFilePreview && state.backendAvailable;
@@ -483,76 +488,113 @@
     };
   }
 
-  async function runDirectN8nWebhook() {
-    var company = companyData[state.companyKey];
-    var headers = {
-      "Content-Type": "application/json"
-    };
+async function runDirectN8nWebhook() {
+  var company = companyData[state.companyKey];
+  var headers = {
+    "Content-Type": "application/json"
+  };
 
-    if (runtimeConfig.n8nAuthHeader && runtimeConfig.n8nAuthValue) {
-      headers[runtimeConfig.n8nAuthHeader] = runtimeConfig.n8nAuthValue;
-    }
-
-    var payloadBody = JSON.stringify({
-      company_name: company.name,
-      company_domain: company.domain,
-      sec_cik: company.secCik,
-      company_aliases: company.aliases || [],
-      time_period_days: state.intervalDays,
-      time_period_label: state.intervalDays + " days"
-    });
-    var response;
-    var attempts = 2;
-    var attempt;
-
-    for (attempt = 1; attempt <= attempts; attempt += 1) {
-      try {
-        response = await fetch(runtimeConfig.n8nWebhookUrl.trim(), {
-          method: "POST",
-          headers: headers,
-          body: payloadBody
-        });
-        break;
-      } catch (error) {
-        if (attempt >= attempts) {
-          throw new Error(
-            "The browser did not receive the workflow response. The n8n run may still have started successfully. To eliminate this class of browser/network error, use the dashboard through its backend proxy instead of direct browser-to-n8n mode."
-          );
-        }
-        setStatus("Connection dropped. Retrying the workflow request once...");
-        await delay(1400);
-      }
-    }
-
-    var payload;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      throw new Error(
-        "The webhook responded, but not with valid JSON. Check the live webhook URL and confirm n8n returns JSON from `Respond to Dashboard`."
-      );
-    }
-    if (!response.ok) {
-      throw new Error(
-        payload.error ||
-          "n8n webhook returned HTTP " +
-            response.status +
-            ". Check that the workflow is active and CORS is allowed."
-      );
-    }
-
-    var normalized = normalizeWebhookPayload(payload);
-    if (
-      (!normalized.memo || normalized.memo === "n8n returned no memo text.") &&
-      normalized.sources.length === 0
-    ) {
-      throw new Error(
-        "n8n returned an empty response. Fix the final `Prepare Webhook Response` / `Respond to Dashboard` nodes so they return `final_one_pager` and `validated_sources`."
-      );
-    }
-
-    return normalized;
+  if (runtimeConfig.n8nAuthHeader && runtimeConfig.n8nAuthValue) {
+    headers[runtimeConfig.n8nAuthHeader] = runtimeConfig.n8nAuthValue;
   }
+
+  var payloadBody = JSON.stringify({
+    company_name: company.name,
+    company_domain: company.domain,
+    sec_cik: company.secCik,
+    company_aliases: company.aliases || [],
+    time_period_days: state.intervalDays,
+    time_period_label: state.intervalDays + " days"
+  });
+
+  var startUrl = runtimeConfig.n8nStartWebhookUrl.trim();
+  var statusUrl = runtimeConfig.n8nStatusWebhookUrl.trim();
+
+  setStatus("Starting " + company.name + " memo job...");
+
+  var startResponse = await fetch(startUrl, {
+    method: "POST",
+    headers: headers,
+    body: payloadBody
+  });
+
+  var startPayload;
+  try {
+    startPayload = await startResponse.json();
+  } catch (error) {
+    throw new Error("The start workflow responded, but not with valid JSON.");
+  }
+
+  if (!startResponse.ok || !startPayload.job_id) {
+    throw new Error(
+      startPayload.error ||
+        startPayload.error_message ||
+        "Start workflow did not return a job_id."
+    );
+  }
+
+  var jobId = startPayload.job_id;
+  setStatus("Workflow started. Tracking job " + jobId + ". Waiting for completion...");
+
+  var maxAttempts = runtimeConfig.n8nStatusMaxAttempts || 120;
+  var pollDelayMs = runtimeConfig.n8nStatusPollDelayMs || 5000;
+
+  for (var attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    await delay(pollDelayMs);
+
+    var separator = statusUrl.indexOf("?") === -1 ? "?" : "&";
+    var statusResponse = await fetch(
+      statusUrl + separator + "job_id=" + encodeURIComponent(jobId),
+      {
+        method: "GET"
+      }
+    );
+
+    var statusPayload;
+    try {
+      statusPayload = await statusResponse.json();
+    } catch (error) {
+      throw new Error("The status workflow responded, but not with valid JSON.");
+    }
+
+    if (!statusResponse.ok) {
+      throw new Error(
+        statusPayload.error ||
+          statusPayload.error_message ||
+          "Status workflow returned HTTP " + statusResponse.status + "."
+      );
+    }
+
+    var status = String(statusPayload.status || "").toLowerCase();
+
+    if (status === "complete" || status === "completed") {
+      return normalizeWebhookPayload({
+        ok: true,
+        run_id: statusPayload.job_id || jobId,
+        generated_at: statusPayload.updated_at || new Date().toISOString(),
+        final_one_pager: statusPayload.result_text || "",
+        validated_sources: statusPayload.validated_sources || [],
+        excel_file_name: statusPayload.result_url || ""
+      });
+    }
+
+    if (status === "error" || status === "failed") {
+      throw new Error(statusPayload.error_message || "The n8n workflow failed.");
+    }
+
+    setStatus(
+      "Workflow still running. Tracking job " +
+        jobId +
+        ". Status check " +
+        attempt +
+        " of " +
+        maxAttempts +
+        "."
+    );
+  }
+
+  throw new Error("Timed out waiting for the workflow to finish. Check n8n executions and the jobs sheet.");
+}
 
   function appendLinkedText(parent, text) {
     var linkPattern = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
@@ -913,7 +955,7 @@
         company.name +
         " for a " +
         state.intervalDays +
-        "-day run. Waiting for the workflow to return the memo and validated sources."
+        "-day run. Starting async workflow and polling for completion."
     );
 
     try {
