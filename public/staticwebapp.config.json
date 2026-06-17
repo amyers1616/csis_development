@@ -12,8 +12,12 @@
   },
   "routes": [
     {
-      "route": "/login",
-      "rewrite": "/.auth/login/aad"
+      "route": "/.auth/login/aad",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/.auth/*",
+      "allowedRoles": ["anonymous", "authenticated"]
     },
     {
       "route": "/*",
