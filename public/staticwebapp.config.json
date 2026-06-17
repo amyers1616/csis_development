@@ -12,7 +12,7 @@
   },
   "routes": [
     {
-      "route": "/.auth/login/aad",
+      "route": "/login",
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
@@ -26,7 +26,7 @@
   ],
   "responseOverrides": {
     "401": {
-      "redirect": "/login",
+      "redirect": "/.auth/login/aad",
       "statusCode": 302
     }
   }
