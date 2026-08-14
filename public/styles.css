@@ -470,12 +470,13 @@ html {
 .memo-body {
   color: var(--text-main);
   font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-  font-size: 1rem;
-  line-height: 1.68;
+  font-size: 0.98rem;
+  font-weight: 400;
+  line-height: 1.62;
 }
 
 .memo-section {
-  margin-bottom: 32px;
+  margin-bottom: 38px;
 }
 
 .memo-section:last-child {
@@ -483,11 +484,11 @@ html {
 }
 
 .memo-section h3 {
-  margin: 0 0 16px;
-  padding: 0 0 10px;
+  margin: 0 0 18px;
+  padding: 0 0 12px;
   border-bottom: 1px solid var(--line-strong);
   font-family: inherit;
-  font-size: 1.2rem;
+  font-size: 1.16rem;
   font-weight: 700;
   line-height: 1.35;
   letter-spacing: 0;
@@ -500,18 +501,18 @@ html {
 }
 
 .memo-body p {
-  margin: 0 0 0.9rem;
+  margin: 0 0 1rem;
 }
 
 .memo-body ul,
 .memo-body ol {
   margin: 0;
-  padding-left: 1.5rem;
+  padding-left: 1.65rem;
 }
 
 .memo-body li {
-  margin: 0 0 0.85rem;
-  padding-left: 0.3rem;
+  margin: 0 0 1.05rem;
+  padding-left: 0.4rem;
 }
 
 .memo-body li:last-child {
@@ -525,7 +526,7 @@ html {
 
 .memo-body strong {
   color: #ffffff;
-  font-weight: 700;
+  font-weight: 650;
 }
 
 .memo-body a {
@@ -545,6 +546,19 @@ html {
   color: var(--text-soft);
   font-size: 0.88rem;
   line-height: 1.55;
+}
+
+.memo-item-sources {
+  display: block;
+  margin-top: 0.42rem;
+  color: var(--text-soft);
+  font-size: 0.89rem;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.memo-item-sources a {
+  color: var(--accent);
 }
 
 .sources-header {

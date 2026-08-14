@@ -594,7 +594,47 @@ async function runDirectN8nWebhook() {
   throw new Error("Timed out waiting for the workflow to finish. Check n8n executions and the jobs sheet.");
 }
 
-  function appendFormattedText(parent, text) {
+  function readableLinkName(label, url, useSourceName) {
+    if (!useSourceName) return label;
+
+    var host = "";
+    try {
+      host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    } catch (error) {
+      return label;
+    }
+
+    var sourceNames = {
+      "amazon.com": "Amazon",
+      "aboutamazon.com": "About Amazon",
+      "reuters.com": "Reuters",
+      "finance.yahoo.com": "Yahoo Finance",
+      "seekingalpha.com": "Seeking Alpha",
+      "fool.com": "The Motley Fool",
+      "sec.gov": "U.S. SEC",
+      "federalregister.gov": "Federal Register",
+      "businesswire.com": "Business Wire",
+      "prnewswire.com": "PR Newswire",
+      "globenewswire.com": "GlobeNewswire",
+      "bloomberg.com": "Bloomberg",
+      "apnews.com": "AP News",
+      "ft.com": "Financial Times",
+      "wsj.com": "The Wall Street Journal",
+      "cnbc.com": "CNBC",
+      "csis.org": "CSIS"
+    };
+    var exactName = sourceNames[host];
+    if (exactName) return exactName;
+
+    var matchedDomain = Object.keys(sourceNames).find(function (domain) {
+      return host.endsWith("." + domain);
+    });
+    if (matchedDomain) return sourceNames[matchedDomain];
+
+    return label.length > 54 ? host : label;
+  }
+
+  function appendFormattedText(parent, text, useSourceNames) {
     var inlinePattern = /(\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|\*\*([^*]+)\*\*)/g;
     var lastIndex = 0;
     var match;
@@ -609,11 +649,11 @@ async function runDirectN8nWebhook() {
         link.href = match[3];
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = match[2];
+        link.textContent = readableLinkName(match[2], match[3], useSourceNames);
         parent.appendChild(link);
       } else if (match[4]) {
         var strong = document.createElement("strong");
-        strong.textContent = match[4];
+        appendFormattedText(strong, match[4], useSourceNames);
         parent.appendChild(strong);
       }
 
@@ -634,10 +674,11 @@ async function runDirectN8nWebhook() {
     if (!raw) return "";
 
     var cleaned = raw
-      .replace(/^#{1,6}\s*/, "")
-      .replace(/^\d+[.)]\s*/, "")
       .replace(/^\*\*(.+)\*\*$/, "$1")
       .replace(/^__(.+)__$/, "$1")
+      .replace(/^#{1,6}\s*/, "")
+      .replace(/^\d+[.)]\s*/, "")
+      .replace(/(?:\s*\[\d+\])+\s*$/, "")
       .replace(/\s*:\s*$/, "")
       .trim();
     var normalized = cleaned.toLowerCase().replace(/\s+/g, " ");
@@ -790,7 +831,33 @@ async function runDirectN8nWebhook() {
     // Keep the workflow's final wording intact. In particular, Past CSIS
     // Engagements is copied directly from the spreadsheet and must not be
     // rewritten by the webpage.
-    return text;
+    var normalized = String(text || "").trim();
+
+    // Some model outputs wrap a complete insight in bold Markdown. That makes
+    // an entire paragraph visually heavy and prevents nested links from being
+    // rendered cleanly, so only remove bold when it wraps the whole block.
+    if (/^\*\*[\s\S]+\*\*$/.test(normalized)) {
+      normalized = normalized.slice(2, -2).trim();
+    }
+
+    return normalized;
+  }
+
+  function appendMemoItemText(parent, text) {
+    var sourceStart = text.search(/\s+Sources include\s+/i);
+    if (sourceStart === -1) {
+      appendFormattedText(parent, text, false);
+      return;
+    }
+
+    appendFormattedText(parent, text.slice(0, sourceStart).trim(), false);
+
+    var sourceLine = document.createElement("span");
+    sourceLine.className = "memo-item-sources";
+    var sourceText = text.slice(sourceStart).trim().replace(/^Sources include\s+/i, "");
+    sourceLine.appendChild(document.createTextNode("Sources  "));
+    appendFormattedText(sourceLine, sourceText, true);
+    parent.appendChild(sourceLine);
   }
 
   function sectionSources(title, sources) {
@@ -858,10 +925,37 @@ async function runDirectN8nWebhook() {
       title.textContent = section.title;
       sectionEl.appendChild(title);
 
-      parseSectionBlocks(section.body).forEach(function (block) {
+      var blocks = parseSectionBlocks(section.body);
+      var isActionable = section.title === "Actionable Insights";
+      var hasOrderedInsights = blocks.some(function (block) {
+        return block.type === "ordered";
+      });
+
+      if (isActionable && !hasOrderedInsights) {
+        var insightParagraphs = blocks.filter(function (block) {
+          return block.type === "paragraph";
+        });
+        if (insightParagraphs.length) {
+          var insightList = document.createElement("ol");
+          insightParagraphs.forEach(function (block) {
+            var insightItem = document.createElement("li");
+            appendMemoItemText(
+              insightItem,
+              normalizeMemoParagraph(section.title, block.text.trim())
+            );
+            insightList.appendChild(insightItem);
+          });
+          sectionEl.appendChild(insightList);
+          blocks = blocks.filter(function (block) {
+            return block.type !== "paragraph";
+          });
+        }
+      }
+
+      blocks.forEach(function (block) {
         if (block.type === "paragraph") {
           var p = document.createElement("p");
-          appendFormattedText(
+          appendMemoItemText(
             p,
             normalizeMemoParagraph(section.title, block.text.trim())
           );
@@ -877,7 +971,7 @@ async function runDirectN8nWebhook() {
         }
         block.items.forEach(function (itemText) {
           var item = document.createElement("li");
-          appendFormattedText(
+          appendMemoItemText(
             item,
             normalizeMemoParagraph(section.title, itemText.trim())
           );
