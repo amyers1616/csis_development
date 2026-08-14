@@ -469,13 +469,13 @@ html {
 
 .memo-body {
   color: var(--text-main);
-  font-family: "Iowan Old Style", "Palatino Linotype", serif;
-  font-size: 1.08rem;
-  line-height: 1.9;
+  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  font-size: 1rem;
+  line-height: 1.68;
 }
 
 .memo-section {
-  margin-bottom: 28px;
+  margin-bottom: 32px;
 }
 
 .memo-section:last-child {
@@ -483,43 +483,68 @@ html {
 }
 
 .memo-section h3 {
-  margin: 0 0 10px;
-  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
-  font-size: 1.3rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: var(--accent);
-  text-transform: uppercase;
+  margin: 0 0 16px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--line-strong);
+  font-family: inherit;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: var(--text-main);
 }
 
 .memo-body p,
 .memo-body li {
-  margin: 0 0 1.1rem;
+  overflow-wrap: anywhere;
 }
 
-.memo-body ul {
+.memo-body p {
+  margin: 0 0 0.9rem;
+}
+
+.memo-body ul,
+.memo-body ol {
   margin: 0;
-  padding-left: 1.2rem;
+  padding-left: 1.5rem;
+}
+
+.memo-body li {
+  margin: 0 0 0.85rem;
+  padding-left: 0.3rem;
+}
+
+.memo-body li:last-child {
+  margin-bottom: 0;
+}
+
+.memo-body li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.memo-body strong {
+  color: #ffffff;
+  font-weight: 700;
 }
 
 .memo-body a {
   color: #e6c77f;
-  text-decoration: none;
-  border-bottom: 1px solid rgba(230, 199, 127, 0.45);
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 199, 127, 0.5);
+  text-underline-offset: 0.18em;
 }
 
 .memo-body a:hover {
-  border-bottom-color: #e6c77f;
+  color: #f2d996;
+  text-decoration-color: currentColor;
 }
 
-.memo-citations {
-  white-space: nowrap;
-}
-
-.memo-citations a {
-  margin-left: 6px;
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
-  font-size: 0.86rem;
+.memo-source-links {
+  margin-top: 12px !important;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+  line-height: 1.55;
 }
 
 .sources-header {
