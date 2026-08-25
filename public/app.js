@@ -314,27 +314,25 @@
   }
 
   function buildPreviewMemo(company, intervalDays) {
-    if (company.name === "Chevron") {
-      return [
-        "Chevron has had a dense " +
-          intervalDays +
-          "-day signal environment shaped by investor messaging, portfolio updates, and policy-sensitive coverage around energy security, LNG, and emissions rules.",
-        "The strongest CSIS outreach angle is the intersection of supply resilience, industrial competitiveness, and regulatory durability. That framing is more useful than generic energy transition language because it connects to current business and policy pressures.",
-        "A one-page memo should organize the findings around recent developments, regulatory and geopolitical exposure, and the fit with CSIS expertise in energy security, global supply chains, and strategic competition.",
-        "Recommended next step: position CSIS engagement as a targeted briefing or roundtable on energy market disruption, global policy risk, and investment planning."
-      ].join("\n\n");
-    }
-
     return [
-      company.name +
+      "**Actionable Insights**",
+      "1. " +
+        company.name +
         " shows a " +
         intervalDays +
-        "-day pattern of investor communication, regulatory watchpoints, and public positioning around production, technology investment, and long-cycle returns.",
-      "The strongest CSIS outreach angle is to connect " +
+        "-day pattern of investor communication and policy-sensitive positioning. CSIS can connect these signals to industrial strategy, supply-chain resilience, and geopolitical risk. Relevant scholars include Jane Smith and Alex Rivera. Sources include [Company update](https://" +
+        company.domain +
+        ").",
+      "2. A focused briefing could help translate regulatory and market changes into implications for long-cycle planning. The discussion should concentrate on the strongest supported issue rather than a generic corporate overview. Relevant CSIS material includes [Strategic policy analysis](https://www.csis.org/).",
+      "**Recent Developments**",
+      "- " +
         company.name +
-        "'s current positioning with industrial strategy, supply-chain resilience, technology competition, energy security, and the geopolitical consequences of market realignment.",
-      "A one-page memo should surface the most material developments, explain which policy or market pressures are shaping them, and translate that into why CSIS expertise matters now.",
-      "Recommended next step: frame outreach around a focused discussion with CSIS experts on strategic energy competition, federal policy pathways, and downstream implications for corporate planning."
+        " published a new corporate update during the selected period. ([Company website](https://" +
+        company.domain +
+        "))",
+      "- Public filings and policy notices created additional regulatory watchpoints. ([U.S. SEC](https://www.sec.gov/))",
+      "**Past CSIS Engagements**",
+      "- No matching past CSIS engagement record was found in the spreadsheet."
     ].join("\n\n");
   }
 
@@ -596,23 +594,70 @@ async function runDirectN8nWebhook() {
   throw new Error("Timed out waiting for the workflow to finish. Check n8n executions and the jobs sheet.");
 }
 
-  function appendLinkedText(parent, text) {
-    var linkPattern = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+  function readableLinkName(label, url, useSourceName) {
+    if (!useSourceName) return label;
+
+    var host = "";
+    try {
+      host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    } catch (error) {
+      return label;
+    }
+
+    var sourceNames = {
+      "amazon.com": "Amazon",
+      "aboutamazon.com": "About Amazon",
+      "reuters.com": "Reuters",
+      "finance.yahoo.com": "Yahoo Finance",
+      "seekingalpha.com": "Seeking Alpha",
+      "fool.com": "The Motley Fool",
+      "sec.gov": "U.S. SEC",
+      "federalregister.gov": "Federal Register",
+      "businesswire.com": "Business Wire",
+      "prnewswire.com": "PR Newswire",
+      "globenewswire.com": "GlobeNewswire",
+      "bloomberg.com": "Bloomberg",
+      "apnews.com": "AP News",
+      "ft.com": "Financial Times",
+      "wsj.com": "The Wall Street Journal",
+      "cnbc.com": "CNBC",
+      "csis.org": "CSIS"
+    };
+    var exactName = sourceNames[host];
+    if (exactName) return exactName;
+
+    var matchedDomain = Object.keys(sourceNames).find(function (domain) {
+      return host.endsWith("." + domain);
+    });
+    if (matchedDomain) return sourceNames[matchedDomain];
+
+    return label.length > 54 ? host : label;
+  }
+
+  function appendFormattedText(parent, text, useSourceNames) {
+    var inlinePattern = /(\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|\*\*([^*]+)\*\*)/g;
     var lastIndex = 0;
     var match;
 
-    while ((match = linkPattern.exec(text)) !== null) {
+    while ((match = inlinePattern.exec(text)) !== null) {
       if (match.index > lastIndex) {
         parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
       }
 
-      var link = document.createElement("a");
-      link.href = match[2];
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      link.textContent = match[1];
-      parent.appendChild(link);
-      lastIndex = linkPattern.lastIndex;
+      if (match[2] && match[3]) {
+        var link = document.createElement("a");
+        link.href = match[3];
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = readableLinkName(match[2], match[3], useSourceNames);
+        parent.appendChild(link);
+      } else if (match[4]) {
+        var strong = document.createElement("strong");
+        appendFormattedText(strong, match[4], useSourceNames);
+        parent.appendChild(strong);
+      }
+
+      lastIndex = inlinePattern.lastIndex;
     }
 
     if (lastIndex < text.length) {
@@ -624,19 +669,44 @@ async function runDirectN8nWebhook() {
     return /\[[^\]]+\]\((https?:\/\/[^)\s]+)\)/.test(text || "");
   }
 
+  function memoSectionTitle(line) {
+    var raw = String(line || "").trim();
+    if (!raw) return "";
+
+    var cleaned = raw
+      .replace(/^\*\*(.+)\*\*$/, "$1")
+      .replace(/^__(.+)__$/, "$1")
+      .replace(/^#{1,6}\s*/, "")
+      .replace(/^\d+[.)]\s*/, "")
+      .replace(/(?:\s*\[\d+\])+\s*$/, "")
+      .replace(/\s*:\s*$/, "")
+      .trim();
+    var normalized = cleaned.toLowerCase().replace(/\s+/g, " ");
+
+    if (normalized === "actionable insights") return "Actionable Insights";
+    if (normalized === "recent developments") return "Recent Developments";
+    if (
+      normalized === "past csis engagement" ||
+      normalized === "past csis engagements"
+    ) {
+      return "Past CSIS Engagements";
+    }
+
+    return "";
+  }
+
   function parseMemoSections(memo) {
-    var lines = memo.split(/\r?\n/);
+    var lines = String(memo || "").split(/\r?\n/);
     var sections = [];
     var current = null;
 
     lines.forEach(function (line) {
-      var trimmed = line.trim();
-      var heading = trimmed.match(/^\d+\.\s+(.+)$/);
+      var heading = memoSectionTitle(line);
 
       if (heading) {
         if (current) sections.push(current);
         current = {
-          title: heading[1].trim(),
+          title: heading,
           lines: []
         };
         return;
@@ -664,28 +734,130 @@ async function runDirectN8nWebhook() {
       });
   }
 
-  function normalizePastEngagementParagraph(text) {
-    var normalized = String(text || "").trim();
-    if (!normalized) return "";
-
-    normalized = normalized
-      .replace(/^According to (the )?company note[:,]?\s*/i, "")
-      .replace(/^Based on (the )?company note[:,]?\s*/i, "")
-      .replace(/^Company note[:,]?\s*/i, "")
-      .replace(/^In the past[:,]?\s*/i, "");
-
-    if (!normalized) {
-      return "In the past, no prior CSIS engagement details were available in the company note.";
+  function listMarker(line) {
+    var unordered = String(line || "").match(/^\s*[-*]\s+(.+)$/);
+    if (unordered) {
+      return { type: "unordered", text: unordered[1], number: null };
     }
 
-    return "In the past, " + normalized;
+    var ordered = String(line || "").match(/^\s*(\d+)[.)]\s+(.+)$/);
+    if (ordered) {
+      return {
+        type: "ordered",
+        text: ordered[2],
+        number: Number(ordered[1])
+      };
+    }
+
+    return null;
+  }
+
+  function parseSectionBlocks(body) {
+    var lines = String(body || "").split(/\r?\n/);
+    var blocks = [];
+    var index = 0;
+
+    while (index < lines.length) {
+      while (index < lines.length && !lines[index].trim()) index += 1;
+      if (index >= lines.length) break;
+
+      var marker = listMarker(lines[index]);
+      if (marker) {
+        var listType = marker.type;
+        var startNumber = marker.number;
+        var items = [];
+
+        while (index < lines.length) {
+          marker = listMarker(lines[index]);
+          if (!marker || marker.type !== listType) break;
+
+          var itemText = marker.text.trim();
+          index += 1;
+
+          while (
+            index < lines.length &&
+            lines[index].trim() &&
+            !listMarker(lines[index])
+          ) {
+            itemText += " " + lines[index].trim();
+            index += 1;
+          }
+
+          items.push(itemText);
+
+          var nextContent = index;
+          while (nextContent < lines.length && !lines[nextContent].trim()) {
+            nextContent += 1;
+          }
+          var nextMarker = listMarker(lines[nextContent]);
+          if (nextMarker && nextMarker.type === listType) {
+            index = nextContent;
+          } else {
+            index = nextContent;
+            break;
+          }
+        }
+
+        blocks.push({
+          type: listType,
+          start: startNumber,
+          items: items
+        });
+        continue;
+      }
+
+      var paragraphLines = [];
+      while (
+        index < lines.length &&
+        lines[index].trim() &&
+        !listMarker(lines[index])
+      ) {
+        paragraphLines.push(lines[index].trim());
+        index += 1;
+      }
+
+      if (paragraphLines.length) {
+        blocks.push({
+          type: "paragraph",
+          text: paragraphLines.join(" ")
+        });
+      }
+    }
+
+    return blocks;
   }
 
   function normalizeMemoParagraph(title, text) {
-    if (String(title || "").toLowerCase().indexOf("past csis engagement") !== -1) {
-      return normalizePastEngagementParagraph(text);
+    // Keep the workflow's final wording intact. In particular, Past CSIS
+    // Engagements is copied directly from the spreadsheet and must not be
+    // rewritten by the webpage.
+    var normalized = String(text || "").trim();
+
+    // Some model outputs wrap a complete insight in bold Markdown. That makes
+    // an entire paragraph visually heavy and prevents nested links from being
+    // rendered cleanly, so only remove bold when it wraps the whole block.
+    if (/^\*\*[\s\S]+\*\*$/.test(normalized)) {
+      normalized = normalized.slice(2, -2).trim();
     }
-    return text;
+
+    return normalized;
+  }
+
+  function appendMemoItemText(parent, text) {
+    var sourceStart = text.search(/\s+Sources include\s+/i);
+    if (sourceStart === -1) {
+      appendFormattedText(parent, text, false);
+      return;
+    }
+
+    appendFormattedText(parent, text.slice(0, sourceStart).trim(), false);
+
+    var sourceLine = document.createElement("span");
+    sourceLine.className = "memo-item-sources";
+    var sourceText = text.slice(sourceStart).trim().replace(/^Sources include\s+/i, "");
+    sourceLine.appendChild(document.createTextNode("Sources  "));
+    appendFormattedText(sourceLine, sourceText, true);
+    parent.appendChild(sourceLine);
   }
 
   function sectionSources(title, sources) {
@@ -721,19 +893,20 @@ async function runDirectN8nWebhook() {
       .slice(0, 4);
   }
 
-  function appendCitations(parent, citations) {
+  function appendSourceLinks(parent, citations) {
     if (!citations.length) return;
 
-    var citationWrap = document.createElement("span");
-    citationWrap.className = "memo-citations";
-    citationWrap.appendChild(document.createTextNode(" "));
+    var citationWrap = document.createElement("p");
+    citationWrap.className = "memo-source-links";
+    citationWrap.appendChild(document.createTextNode("Sources: "));
 
     citations.forEach(function (source, index) {
+      if (index > 0) citationWrap.appendChild(document.createTextNode(" · "));
       var link = document.createElement("a");
       link.href = source.url;
       link.target = "_blank";
-      link.rel = "noreferrer";
-      link.textContent = "[" + (index + 1) + "]";
+      link.rel = "noopener noreferrer";
+      link.textContent = source.title || source.domain || "Source";
       link.title = source.title || source.domain || "Source";
       citationWrap.appendChild(link);
     });
@@ -752,35 +925,64 @@ async function runDirectN8nWebhook() {
       title.textContent = section.title;
       sectionEl.appendChild(title);
 
-      section.body
-        .split(/\n{2,}/)
-        .filter(Boolean)
-        .forEach(function (paragraph, paragraphIndex) {
-          var trimmed = normalizeMemoParagraph(section.title, paragraph.trim());
+      var blocks = parseSectionBlocks(section.body);
+      var isActionable = section.title === "Actionable Insights";
+      var hasOrderedInsights = blocks.some(function (block) {
+        return block.type === "ordered";
+      });
 
-          if (trimmed.indexOf("- ") === 0) {
-            var list = document.createElement("ul");
-            trimmed.split(/\n+/).forEach(function (line) {
-              var itemText = line.replace(/^-\s*/, "").trim();
-              if (!itemText) return;
-              var item = document.createElement("li");
-              appendLinkedText(item, itemText);
-              if (paragraphIndex === 0 && !hasInlineCitations(itemText)) {
-                appendCitations(item, sectionSources(section.title, sources));
-              }
-              list.appendChild(item);
-            });
-            sectionEl.appendChild(list);
-            return;
-          }
-
-          var p = document.createElement("p");
-          appendLinkedText(p, trimmed);
-          if (paragraphIndex === 0 && !hasInlineCitations(trimmed)) {
-            appendCitations(p, sectionSources(section.title, sources));
-          }
-          sectionEl.appendChild(p);
+      if (isActionable && !hasOrderedInsights) {
+        var insightParagraphs = blocks.filter(function (block) {
+          return block.type === "paragraph";
         });
+        if (insightParagraphs.length) {
+          var insightList = document.createElement("ol");
+          insightParagraphs.forEach(function (block) {
+            var insightItem = document.createElement("li");
+            appendMemoItemText(
+              insightItem,
+              normalizeMemoParagraph(section.title, block.text.trim())
+            );
+            insightList.appendChild(insightItem);
+          });
+          sectionEl.appendChild(insightList);
+          blocks = blocks.filter(function (block) {
+            return block.type !== "paragraph";
+          });
+        }
+      }
+
+      blocks.forEach(function (block) {
+        if (block.type === "paragraph") {
+          var p = document.createElement("p");
+          appendMemoItemText(
+            p,
+            normalizeMemoParagraph(section.title, block.text.trim())
+          );
+          sectionEl.appendChild(p);
+          return;
+        }
+
+        var list = document.createElement(
+          block.type === "ordered" ? "ol" : "ul"
+        );
+        if (block.type === "ordered" && block.start && block.start !== 1) {
+          list.start = block.start;
+        }
+        block.items.forEach(function (itemText) {
+          var item = document.createElement("li");
+          appendMemoItemText(
+            item,
+            normalizeMemoParagraph(section.title, itemText.trim())
+          );
+          list.appendChild(item);
+        });
+        sectionEl.appendChild(list);
+      });
+
+      if (!hasInlineCitations(section.body)) {
+        appendSourceLinks(sectionEl, sectionSources(section.title, sources));
+      }
 
       memoBody.appendChild(sectionEl);
     });
